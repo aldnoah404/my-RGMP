@@ -22,8 +22,56 @@ import os
 import random
 import argparse
 import glob
-#
 
+# constants
+DAVIS_ROOT = '/disk2/data/DAVIS/'
+PALETTE = [
+  0, 0, 0,
+  31, 119, 180,
+  174, 199, 232,
+  255, 127, 14,
+  255, 187, 120,
+  44, 160, 44,
+  152, 223, 138,
+  214, 39, 40,
+  255, 152, 150,
+  148, 103, 189,
+  197, 176, 213,
+  140, 86, 75,
+  196, 156, 148,
+  227, 119, 194,
+  247, 182, 210,
+  127, 127, 127,
+  199, 199, 199,
+  188, 189, 34,
+  219, 219, 141,
+  23, 190, 207,
+  158, 218, 229
+]
+
+
+class font:
+   PURPLE = '\033[95m'
+   CYAN = '\033[96m'
+   DARKCYAN = '\033[36m'
+   BLUE = '\033[94m'
+   GREEN = '\033[92m'
+   YELLOW = '\033[93m'
+   RED = '\033[91m'
+   BOLD = '\033[1m'
+   UNDERLINE = '\033[4m'
+   END = '\033[0m'
+
+    
+# special print functions
+def print_dbg(string):
+    print('{}{}debug{} {}'.format(font.BOLD, font.RED, font.END, string))
+
+def ToOneHot(labels, num_objects):
+    print(labels)
+    labels = labels.view(-1,1)
+    labels = torch.eye(num_objects).index_select(dim=0, index=labels)
+    return ToCudaVariable(labels)
 
 def ToLabel(E):
     fgs = np.argmax(E, axis=0).astype(np.float32)
@@ -35,6 +83,15 @@ def ToCudaVariable(xs, volatile=False):
     else:
         return [Variable(x, volatile=volatile) for x in xs]
 
+def iou(pred, gt):
+    pred = pred.squeeze().cpu().data.numpy()
+    pred = ToLabel(pred)
+    gt = gt.squeeze().cpu().data.numpy()
+    agg = pred + gt
+    i = float(np.sum(agg == 2))
+    u = float(np.sum(agg > 0))
+    return i / u
+    
 def upsample(x, size):
     x = x.numpy()[0]
     dsize = (size[1], size[0])
