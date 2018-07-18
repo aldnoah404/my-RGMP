@@ -1,6 +1,4 @@
 # RGMP PyTorch
-#### Seoung Wug Oh, Joon-Young Lee, Kalyan Sunkavalli, Seon Joo Kim
-#### CVPR 2018
 
 This is forked from the official demo [code](https://github.com/seoungwugoh/RGMP) for the paper. [PDF](http://openaccess.thecvf.com/content_cvpr_2018/CameraReady/1029.pdf)
 
