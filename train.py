@@ -10,6 +10,7 @@ from tensorboardX import SummaryWriter
 MODEL_DIR = 'saved_models'
 NUM_EPOCHS = 1000
 
+# 输出有俩，当前帧的预测掩码和当前帧与前一帧掩码的编码结果，用于传入下一帧预测
 def Propagate_MS(ms, model, F2, P2):
     h, w = F2.size()[2], F2.size()[3]
     
@@ -84,17 +85,19 @@ def log_mask(frames, masks, info, writer, F_name='Train/frames', M_name='Train/m
     for f in range(T):
         E = masks[0,:,f].cpu().data.numpy()
         # make hard label
-        E = ToLabel(E)
+        E = ToLabel(E) # E.shape = [H, W], 每个像素点的值表示该点所属的类别, 最后将输出转化为uint8格式
 #         E = E[lh[0]:-uh[0], lw[0]:-uw[0]]
         
         # need to implement mask overlay
-        
+        # 将 NumPy 数组 E 转换为 PIL 图片对象 img_E，并使用 PALETTE 设置图像的调色板（可视化颜色设置）。
         img_E = Image.fromarray(E)
         img_E.putpalette(PALETTE)
         arr_E = np.array(E)
+        # 将图像数据拷贝到视频数组中
         vid[0,:,f,:,:] = np.array(img_E)
         
     vid_tensor = torch.FloatTensor(vid)
+    # 使用 TensorBoard 的 writer 将输入帧和生成的掩码记录为视频。存储的位置由 F_name 和 M_name 确定。
     writer.add_video(F_name, vid_tensor=frames)
     writer.add_video(M_name, vid_tensor=vid_tensor)
     print('[tensorboard] Mask updated')
@@ -206,7 +209,7 @@ if __name__ == '__main__':
         params += [{'params':[value],'lr':args.lr, 'weight_decay': 4e-5}]
 
     criterion = torch.nn.BCELoss()
-    optimizer = torch.optim.SGD(params, lr=args.lr, momentum=0.9)
+    optimizer = torch.optim.SGD(params, lr=args.lr, momentum=0.9) 
     iters_per_epoch = len(Trainloader)
     for epoch in range(start_epoch, args.num_epochs):        
         if epoch % args.eval_epoch == 1:
@@ -231,6 +234,7 @@ if __name__ == '__main__':
                     msv_F1, msv_P1, all_M = ToCudaVariable([all_F[:,:,0], all_E[:,0,0], all_M])
                     ms = model.Encoder(msv_F1, msv_P1)[0]
 
+                    # 对每一帧进行分割
                     for f in range(0, all_M.shape[2] - 1):
                         output, ms = Propagate_MS(ms, all_F[:,:,f+1], all_E[:,0,f])
                         all_E[:,0,f+1] = output.detach()
@@ -254,8 +258,12 @@ if __name__ == '__main__':
         model.train()
         print('[Train] Epoch {}{}{}'.format(font.BOLD, epoch, font.END))
         for i, (all_F, all_M, info) in enumerate(Trainloader):
+        # 输出的all_F.shape[1, 1, 3, num_frames, H, W],归一化的数组，每一个值在0-1之间，表示对应像素值大小
+        # all_M.shape[1, 1, num_objects, num_framnes, H, W],one-hot编码后的数组，每一个值为0或1,表示对应的类别，应该从num_objects维度去看。
             optimizer.zero_grad()
             all_F, all_M = all_F[0], all_M[0]
+            # all_F.shape = [1, 3, num_frames, H, W]
+            # all_M.shape = [1, num_objects, num_framnes, H, W]
             seq_name = info['name'][0]
             num_frames = info['num_frames'][0]
             num_objects = info['num_objects'][0]
@@ -268,11 +276,15 @@ if __name__ == '__main__':
             tt = time.time()
 
             B,C,T,H,W = all_M.shape
+            # all_E应该是用来存放预测的掩码的
             all_E = torch.zeros(B,C,T,H,W)
+            print(f'all_E.shape:{all_E.shape}')
+            print(f'all_M.shape:{all_M.shape}')
+            # 这里两个tensor大小似乎有点不同但是是可以的。
             all_E[:,0,0] = all_M[:,:,0]
-
+            # msv_F1.shape = [1, 3, H, W], msv_P1.shape = [1, H, W]
             msv_F1, msv_P1, all_M = ToCudaVariable([all_F[:,:,0], all_E[:,0,0], all_M])
-            ms = model.Encoder(msv_F1, msv_P1)[0]
+            ms = model.Encoder(msv_F1, msv_P1)[0] # ms为 1/32, 512, 为第一帧的编码结果
 
             num_bptt = all_M.shape[2]
             loss = 0
@@ -282,6 +294,7 @@ if __name__ == '__main__':
                 all_E[:,0,f+1] = output.detach()
                 loss = loss + criterion(output.permute(1,2,0), all_M[:,0,f+1].float())
                 counter += 1
+                # 每隔bptt_step帧进行一次梯度更新
                 if (f+1) % args.bptt_step == 0:
                     optimizer.zero_grad()
                     loss.backward(retain_graph=True)
@@ -290,6 +303,7 @@ if __name__ == '__main__':
                     if f < num_bptt - 2:
                         loss = 0
                         counter = 0
+            # 进行最后一次梯度更新
             if loss > 0:
                 optimizer.zero_grad()
                 loss.backward()
@@ -297,6 +311,7 @@ if __name__ == '__main__':
                 
             # logging and display
             if (i+1) % args.disp_interval == 0:
+                # i + epoch * iters_per_epoch 用于表示全局步骤数，这是为了确保每次记录时的步骤是唯一的。
                 writer.add_scalar('Train/BCE', loss/counter, i + epoch * iters_per_epoch)
                 writer.add_scalar('Train/IOU', iou(torch.cat((1-all_E, all_E), dim=1), all_M), i + epoch * iters_per_epoch)
                 print('loss: {}'.format(loss/counter))

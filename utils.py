@@ -67,22 +67,51 @@ class font:
 def print_dbg(string):
     print('{}{}debug{} {}'.format(font.BOLD, font.RED, font.END, string))
 
+
+'''
+# 将labels转化为独热编码
+例如：
+labels = [2, 0, 1] , num_objects = 3
+则转变后的labels为：
+[[0, 0, 1], # 对应2
+ [1, 0, 0], # 对应0
+ [0, 1, 0]] # 对应1
+最后再用ToCudaVariable,将生成的独热编码张量转移到GPU上
+'''
 def ToOneHot(labels, num_objects):
     print(labels)
     labels = labels.view(-1,1)
     labels = torch.eye(num_objects).index_select(dim=0, index=labels)
     return ToCudaVariable(labels)
 
+'''
+输入：二维numpy数组：[num_classes, H, W]
+np.argmax返回沿指定轴的最大值索引，即概率最高的类别
+输出的形状：[H, W], 每个像素点的值表示该点所属的类别
+最后将输出转化为uint8格式
+'''
 def ToLabel(E):
     fgs = np.argmax(E, axis=0).astype(np.float32)
     return fgs.astype(np.uint8)
 
+'''
+输入应为一个包含多个tensor的列表
+输出为一个包含Variable对象的列表，且其中所有张量都被转移到GPU上（cuda可用）
+volatile用于指示一个张量是否应该是不可变的，再pytorch0.4.0及之后的版本中已被废弃，改用torch.no_grad()上下文管理器
+使用较新版本的pytorch,应考虑改写函数如下：
+def ToCudaVariable(xs):  
+    if torch.cuda.is_available():  
+        return [x.cuda() for x in xs]  
+    else:  
+        return xs
+'''
 def ToCudaVariable(xs, volatile=False):
     if torch.cuda.is_available():
         return [Variable(x.cuda(), volatile=volatile) for x in xs]
     else:
         return [Variable(x, volatile=volatile) for x in xs]
 
+# 计算IOU
 def iou(pred, gt):
     pred = pred.squeeze().cpu().data.numpy()
     pred = ToLabel(pred)
@@ -91,13 +120,22 @@ def iou(pred, gt):
     i = float(np.sum(agg == 2))
     u = float(np.sum(agg > 0))
     return i / u
-    
+
+'''
+上采样函数，线性插值
+输入：x[1, C, H, W] , size[H', W']
+输出： [1, C, H', W']
+'''
 def upsample(x, size):
     x = x.numpy()[0]
     dsize = (size[1], size[0])
     x = cv2.resize(x, dsize=dsize, interpolation=cv2.INTER_LINEAR)
     return torch.unsqueeze(torch.from_numpy(x), dim=0)
 
+'''
+输入xs应该为一个张量列表
+输出为缩放后的张量列表
+'''
 def downsample(xs, scale):
     if scale == 1:
         return xs
@@ -138,10 +176,10 @@ class DAVIS(data.Dataset):
         _imset_dir = os.path.join(root, 'ImageSets')
         _imset_f = os.path.join(_imset_dir, imset)
 
-        self.videos = []
-        self.num_frames = {}
-        self.num_objects = {}
-        self.shape = {}
+        self.videos = [] # 用于存放video名字的列表
+        self.num_frames = {} # 用于存放每个video对应帧数的字典
+        self.num_objects = {} # 存放对应video含有的对象个数
+        self.shape = {} # 存放对应video第1帧图像大小
         with open(os.path.join(_imset_f), "r") as lines:
             for line in lines:
                 _video = line.rstrip('\n')
@@ -167,13 +205,15 @@ class DAVIS(data.Dataset):
             num_objects = 1
         info['num_objects'] = num_objects
 
-        
+        # raw_frames.shape[num_frames, H, W, 3], 值随机初始化， 数值类型float32
         raw_frames = np.empty((self.num_frames[video],)+self.shape[video]+(3,), dtype=np.float32)
+        # raw_masks.shape[num_frames, H, W], 值随机初始化， 数值类型uint8
         raw_masks = np.empty((self.num_frames[video],)+self.shape[video], dtype=np.uint8)
         for f in range(self.num_frames[video]):
+            # 依次读取图片，并作归一化，再存入对应raw_frames中
             img_file = os.path.join(self.image_dir, video, '{:05d}.jpg'.format(f))
             raw_frames[f] = np.array(Image.open(img_file).convert('RGB'))/255.
-
+            # 若当前帧存在对应掩码，则读取并转为调色板模式，若没有，则读入第一帧图像的掩码
             try:
                 mask_file = os.path.join(self.mask_dir, video, '{:05d}.png'.format(f))  #allways return first frame mask
                 raw_mask = np.array(Image.open(mask_file).convert('P'), dtype=np.uint8)
@@ -185,9 +225,11 @@ class DAVIS(data.Dataset):
                 raw_masks[f] = raw_mask
             else:
                 raw_masks[f] = (raw_mask != 0).astype(np.uint8)
-
+        # 循环结束后，raw_frames为一个数组，包含一个视频序列所有帧归一化后的值
+        # raw_masks，返回对应序列的掩码图像，调色板模式
             
         # make One-hot channel is object index
+        # oh_masks.shape[num_frames, H, W, num_objects]
         oh_masks = np.zeros((self.num_frames[video],)+self.shape[video]+(num_objects,), dtype=np.uint8)
         for o in range(num_objects):
             oh_masks[:,:,:,o] = (raw_masks == (o+1)).astype(np.uint8)
@@ -198,6 +240,7 @@ class DAVIS(data.Dataset):
         new_h = h + 32 - h % 32
         new_w = w + 32 - w % 32
         # print(new_h, new_w)
+        # 对oh_masks和raw_frames进行填充
         lh, uh = (new_h-h) / 2, (new_h-h) / 2 + (new_h-h) % 2
         lw, uw = (new_w-w) / 2, (new_w-w) / 2 + (new_w-w) % 2
         lh, uh, lw, uw = int(lh), int(uh), int(lw), int(uw)
@@ -207,5 +250,6 @@ class DAVIS(data.Dataset):
 
         th_frames = torch.unsqueeze(torch.from_numpy(np.transpose(pad_frames, (3, 0, 1, 2)).copy()).float(), 0)
         th_masks = torch.unsqueeze(torch.from_numpy(np.transpose(pad_masks, (3, 0, 1, 2)).copy()).long(), 0)
-        
+        # 输出的th_frames.shape[1, 3, num_frames, H, W],归一化的数组，每一个值在0-1之间，表示对应像素值大小
+        # th_masks.shape[1, num_objects, num_framnes, H, W],one-hot编码后的数组，每一个值为0或1,表示对应的类别，应该从num_objects维度去看。
         return th_frames, th_masks, info

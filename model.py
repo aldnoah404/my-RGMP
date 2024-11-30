@@ -7,6 +7,7 @@ from torch.utils import data
 import torch.utils.model_zoo as model_zoo
 from torchvision import models
 
+# 编码器（公用的）
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
@@ -34,6 +35,8 @@ class Encoder(nn.Module):
         self.register_buffer('std', torch.FloatTensor([0.229, 0.224, 0.225]).view(1,3,1,1))
 
     def forward(self, in_f, in_p):
+        # in_f----输入图像, shape----[B, C, H, W]
+        # in_p----输入掩膜, shape----[B, H, W], 是单通道的, 被扩展为[B, 1, H, W]
         f = (in_f - Variable(self.mean)) / Variable(self.std)
         p = torch.unsqueeze(in_p, dim=1).float() # add channel dim
 
@@ -45,9 +48,10 @@ class Encoder(nn.Module):
         r3 = self.res3(r2) # 1/8, 128
         r4 = self.res4(r3) # 1/16, 256
         r5 = self.res5(r4) # 1/32, 512
-
+        # 输出为各层特征张量
         return r5, r4, r3, r2
 
+# 全局卷积块
 class GC(nn.Module):
     def __init__(self, inplanes, planes, kh=7, kw=7):
         super(GC, self).__init__()
@@ -61,9 +65,11 @@ class GC(nn.Module):
                                  padding=(int(kh/2), 0))
 
     def forward(self, x):
+        # 输入张量shape----[B, C, H, W]
         x_l = self.conv_l2(self.conv_l1(x))
         x_r = self.conv_r2(self.conv_r1(x))
         x = x_l + x_r
+        # 输出张量shape----[B, C, H, W]
         return x
 
 
@@ -78,6 +84,8 @@ class Refine(nn.Module):
         self.scale_factor = scale_factor
 
     def forward(self, f, pm):
+        # f.shape----[B, inplanes, H, W], pm.shape----[B, planes, H', W']
+        # 对f进行卷积, 对pm进行上采样, 两结果进行相加再卷积
         s = self.convFS1(f)
         sr = self.convFS2(F.relu(s))
         sr = self.convFS3(F.relu(sr))
@@ -88,6 +96,7 @@ class Refine(nn.Module):
         mr = self.convMM1(F.relu(m))
         mr = self.convMM2(F.relu(mr))
         m = m + mr
+        # m.shape----[B, planes, H, W]
         return m
 
 
@@ -108,6 +117,7 @@ class Decoder(nn.Module):
         self.pred2 = nn.Conv2d(mdim, 2, kernel_size=(3,3), padding=(1,1), stride=1)
 
     def forward(self, r5, x5, r4, r3, r2):
+        # 输入, 
         x = torch.cat((r5, x5), dim=1)
 
         x = self.GC(x) 

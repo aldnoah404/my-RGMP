@@ -54,6 +54,13 @@ def Encode_MS(val_F1, val_P1, scales):
 
     return ref
 
+'''
+ref为第一帧图像及掩码的编码结果，为一个字典，包含了多个尺度的编码信息
+val_F2为当前帧的图像，val_F2.shape = [1, 3, H, W]
+val_P2为前一帧的掩码，val_P2.shape = [1, H, W]
+scales为要求的缩放的尺度，scales = [0.5, 0.75, 1]
+输出大小val_E2.shape = [1, H, W],即当前帧的预测掩码
+'''
 def Propagate_MS(ref, val_F2, val_P2, scales):
     h, w = val_F2.size()[2], val_F2.size()[3]
     msv_E2 = {}
@@ -76,12 +83,20 @@ def Propagate_MS(ref, val_F2, val_P2, scales):
     val_E2 /= len(scales)
     return val_E2
 
-
+'''
+all_F.shape = [1, 3, num_frames, H, W]
+all_M.shape = [1, 1, num_frames, H, W]
+'''
 def Infer_SO(all_F, all_M, num_frames, scales=[0.5, 0.75, 1.0]):
     all_E = torch.zeros(all_M.size())
+    # all_E.shape = [1, 1, num_frames, H, W]
     all_E[:,:,0] = all_M[:,:,0]
-
+    # all_F[:,:,0]表示第一帧图像，all_E[:,0,0]表示第一帧掩膜
+    # all_F[:,:,0].shape = [1, 3, H, W] , all_E[:,0,0].shape = [1, H, W]
+    # 这里对应论文中的对第一帧及其掩码进行编码
     ref = Encode_MS(all_F[:,:,0], all_E[:,0,0], scales)
+
+    # 这里表示从第二帧开始，将当前帧图像和前一帧图像掩码，结合上述编码送入Propagate_MS，得到当前帧掩码
     for f in range(0, num_frames-1):
         all_E[:,0,f+1] = Propagate_MS(ref, all_F[:,:,f+1], all_E[:,0,f], scales)
 
