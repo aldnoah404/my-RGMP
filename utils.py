@@ -99,17 +99,18 @@ def ToLabel(E):
 输出为一个包含Variable对象的列表，且其中所有张量都被转移到GPU上（cuda可用）
 volatile用于指示一个张量是否应该是不可变的，再pytorch0.4.0及之后的版本中已被废弃，改用torch.no_grad()上下文管理器
 使用较新版本的pytorch,应考虑改写函数如下：
+'''
 def ToCudaVariable(xs):  
     if torch.cuda.is_available():  
         return [x.cuda() for x in xs]  
     else:  
         return xs
-'''
-def ToCudaVariable(xs, volatile=False):
-    if torch.cuda.is_available():
-        return [Variable(x.cuda(), volatile=volatile) for x in xs]
-    else:
-        return [Variable(x, volatile=volatile) for x in xs]
+
+# def ToCudaVariable(xs, volatile=False):
+#     if torch.cuda.is_available():
+#         return [Variable(x.cuda(), volatile=volatile) for x in xs]
+#     else:
+#         return [Variable(x, volatile=volatile) for x in xs]
 
 # 计算IOU
 def iou(pred, gt):

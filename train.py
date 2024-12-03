@@ -18,7 +18,7 @@ def Propagate_MS(ms, model, F2, P2):
     r5, r4, r3, r2  = model.Encoder(msv_F2, msv_P2)
     e2 = model.Decoder(r5, ms, r4, r3, r2)
 
-    return F.softmax(e2[0], dim=1)[:,1], r5
+    return F.softmax(e2[0], dim=1)[:,1], r5.detach()
 
 def parse_args():
     """
@@ -205,8 +205,8 @@ if __name__ == '__main__':
     # params
     params = []
     for key, value in dict(model.named_parameters()).items():
-      if value.requires_grad:
-        params += [{'params':[value],'lr':args.lr, 'weight_decay': 4e-5}]
+        if value.requires_grad:
+            params += [{'params':[value],'lr':args.lr, 'weight_decay': 4e-5}]
 
     criterion = torch.nn.BCELoss()
     optimizer = torch.optim.SGD(params, lr=args.lr, momentum=0.9) 
