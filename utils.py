@@ -25,7 +25,7 @@ import glob
 
 # constants
 DAVIS_ROOT = '/home/chenjian/dataset/DAVIS_2017/DAVIS'
-LSE_ROOT = 'C:\Users\chenj\Desktop\曾国豪毕业资料\毕业设计试验程序及结果\dataset\Youtube-VOS\Youtube-VOS'
+LSE_ROOT = '/root/dataset/seqsets'
 PALETTE = [
   0, 0, 0,
   31, 119, 180,
@@ -269,7 +269,7 @@ class LSE(data.Dataset):
         self.mask_dir = os.path.join(root, 'all/Annotations/')
         self.image_dir = os.path.join(root, 'all/JPEGImages/')
         # _imset_dir = os.path.join(root, '')
-        _imset_f = os.path.join(root, split, '.txt')
+        _imset_f = os.path.join(root, split+'.txt')
 
         self.videos = [] # 用于存放video名字的列表
         self.num_frames = {} # 用于存放每个video对应帧数的字典
@@ -280,7 +280,8 @@ class LSE(data.Dataset):
                 _video = line.rstrip('\n')
                 self.videos.append(_video)
                 self.num_frames[_video] = len(glob.glob(os.path.join(self.image_dir, _video, '*.jpg')))
-                mask_path = os.listdir(os.path.join(self.mask_dir, _video)).sort(key=lambda x : int(x.split('.')[0]))[0]
+                list_mask = os.listdir(os.path.join(self.mask_dir, _video))
+                mask_path = list_mask[0]
                 _mask = np.array(Image.open(os.path.join(self.mask_dir, _video, mask_path)).convert('L'))
                 self.num_objects[_video] = 1
                 self.shape[_video] = np.shape(_mask)
@@ -305,8 +306,10 @@ class LSE(data.Dataset):
         raw_frames = np.empty((self.num_frames[video],)+self.shape[video]+(3,), dtype=np.float32)
         # raw_masks.shape[num_frames, H, W], 值随机初始化， 数值类型uint8
         raw_masks = np.empty((self.num_frames[video],)+self.shape[video], dtype=np.uint8)
-        img_list = os.listdir(os.path.join(self.image_dir, video)).sort(key=lambda x : int(x.split('.')[0]))
-        mask_list = os.listdir(os.path.join(self.mask_dir, video)).sort(key=lambda x : int(x.split('.')[0]))
+        img_list = os.listdir(os.path.join(self.image_dir, video))
+        img_list.sort(key=lambda x : int(x.split('.')[0]))
+        mask_list = os.listdir(os.path.join(self.mask_dir, video))
+        mask_list.sort(key=lambda x : int(x.split('.')[0]))
 
         for f in range(self.num_frames[video]):
             # 依次读取图片，并作归一化，再存入对应raw_frames中
