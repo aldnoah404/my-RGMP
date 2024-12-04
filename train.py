@@ -91,7 +91,7 @@ def log_mask(frames, masks, info, writer, F_name='Train/frames', M_name='Train/m
         # need to implement mask overlay
         # 将 NumPy 数组 E 转换为 PIL 图片对象 img_E，并使用 PALETTE 设置图像的调色板（可视化颜色设置）。
         img_E = Image.fromarray(E)
-        img_E.putpalette(PALETTE)
+        # img_E.putpalette(PALETTE)
         arr_E = np.array(E)
         # 将图像数据拷贝到视频数组中
         vid[0,:,f,:,:] = np.array(img_E)
@@ -169,10 +169,10 @@ def log_mask(frames, masks, info, writer, F_name='Train/frames', M_name='Train/m
         
 if __name__ == '__main__':
     args = parse_args()
-    Trainset = DAVIS(DAVIS_ROOT, imset='2016/train.txt')
+    Trainset = LSE(LSE_ROOT, split='train')
     Trainloader = data.DataLoader(Trainset, batch_size=1, shuffle=True, num_workers=2)
     
-    Testset = DAVIS(DAVIS_ROOT, imset='2016/val.txt')
+    Testset = LSE(LSE_ROOT, split='valid')
     Testloader = data.DataLoader(Testset, batch_size=1, shuffle=True, num_workers=2)
 
     model = RGMP()
