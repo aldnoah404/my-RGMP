@@ -99,7 +99,11 @@ def ToLabel(E):
 输入应为一个包含多个tensor的列表
 输出为一个包含Variable对象的列表，且其中所有张量都被转移到GPU上（cuda可用）
 volatile用于指示一个张量是否应该是不可变的，再pytorch0.4.0及之后的版本中已被废弃，改用torch.no_grad()上下文管理器
+<<<<<<< HEAD
 使用较新版本的pytorch,应考虑改写函数如下:
+=======
+使用较新版本的pytorch,应考虑改写函数如下：
+>>>>>>> a83a89ced627312f6f08551a53ec641f289c52b0
 '''
 def ToCudaVariable(xs):  
     if torch.cuda.is_available():  
